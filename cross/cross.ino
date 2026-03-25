@@ -22,7 +22,7 @@
 #include <FastLED.h>
 #endif
 
-const char* FIRMWARE_VERSION = "4.0";
+const char* FIRMWARE_VERSION = "4.1";
 const char* GITHUB_API_URL = "https://api.github.com/repos/projectseven-co-ltd/CROSS-firmware/releases/latest";
 
 // LED Strip Configuration
@@ -164,6 +164,7 @@ void runPrayerPulse();
 void runAPModePulse();
 void pollAlertsIfDue();
 void pollAlerts();
+void sendBeaconToSchedKit();
 void processSerialInput();
 void handleSerialCommand(const String &line);
 void registerCrossIfNeeded();
@@ -1080,6 +1081,41 @@ void checkForOTAUpdateIfDue() {
   checkForUpdate();
 }
 
+// ── SchedKit Beacon ───────────────────────────────────
+// Posts a beacon signal to SchedKit /v1/signals every poll cycle.
+// This is how the dashboard knows the device is online.
+// device_id is the DEVICE_NAME so it shows as a friendly name.
+void sendBeaconToSchedKit() {
+  if (WiFi.status() != WL_CONNECTED) return;
+
+  String url = String(SCHEDKIT_BASE_URL) + "/v1/signals";
+
+  StaticJsonDocument<256> doc;
+  doc["type"] = "beacon";
+  JsonObject meta = doc.createNestedObject("meta");
+  meta["device_id"] = DEVICE_NAME;
+  meta["cross_id"]  = crossId;
+  meta["firmware"]  = FIRMWARE_VERSION;
+
+  String payload;
+  serializeJson(doc, payload);
+
+  HTTPClient http;
+  WiFiClientSecure client;
+  client.setInsecure();
+  http.begin(client, url);
+  http.addHeader("x-api-key", SCHEDKIT_API_KEY);
+  http.addHeader("Content-Type", "application/json");
+
+  int code = http.POST(payload);
+  if (code == 201) {
+    logLine("[SchedKit] Beacon sent: " + DEVICE_NAME);
+  } else {
+    logLine("[SchedKit] Beacon failed code=" + String(code));
+  }
+  http.end();
+}
+
 void pollAlerts() {
   if (WiFi.status() != WL_CONNECTED) return;
   if (crossId.length() == 0 || crossId == "null") return;
@@ -1090,8 +1126,9 @@ void pollAlerts() {
     return;
   }
 
-  // Update heartbeat
+  // Update heartbeat + beacon
   updateCrossHeartbeat();
+  sendBeaconToSchedKit();
 
   // Fetch firing alerts from SchedKit
   String url = String(SCHEDKIT_BASE_URL) + "/v1/alerts?status=firing&limit=20";
