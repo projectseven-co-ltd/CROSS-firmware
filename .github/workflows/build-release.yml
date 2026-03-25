@@ -15,10 +15,8 @@ jobs:
       - name: Checkout
         uses: actions/checkout@v4
 
-      - name: Install arduino-cli
-        run: |
-          curl -fsSL https://raw.githubusercontent.com/arduino/arduino-cli/master/install.sh | sh
-          echo "$HOME/bin" >> $GITHUB_PATH
+      - name: Setup arduino-cli
+        uses: arduino/setup-arduino-cli@v2
 
       - name: Install ESP32 core
         run: |
@@ -26,12 +24,12 @@ jobs:
           arduino-cli config add board_manager.additional_urls \
             https://raw.githubusercontent.com/espressif/arduino-esp32/gh-pages/package_esp32_index.json
           arduino-cli core update-index
-          arduino-cli core install esp32:esp32@3.1.3
+          arduino-cli core install esp32:esp32
 
       - name: Install libraries
         run: |
-          arduino-cli lib install "ArduinoJson@7.3.1"
-          arduino-cli lib install "FastLED@3.9.13"
+          arduino-cli lib install "ArduinoJson"
+          arduino-cli lib install "FastLED"
 
       - name: Build sketch
         run: |
@@ -43,7 +41,7 @@ jobs:
 
       - name: Rename binary
         run: |
-          # arduino-cli outputs cross.ino.bin — rename to cross.bin for OTA compatibility
+          # arduino-cli outputs cross.ino.bin — rename to cross.bin for OTA
           mv build/cross.ino.bin build/cross.bin
 
       - name: Get version from tag
@@ -58,16 +56,16 @@ jobs:
           body: |
             ## CROSS Firmware ${{ steps.version.outputs.VERSION }}
 
-            ### Flash
+            ### Flash via esptool
             ```
             esptool.py --chip esp32 --port /dev/ttyUSB0 write_flash 0x10000 cross.bin
             ```
 
-            ### OTA
-            Deployed devices will auto-update within 24h.
+            ### Flash via Arduino IDE
+            Use **Sketch → Upload Using Programmer** with the `.bin` file.
 
-            ### Changelog
-            See commit history for changes in this release.
+            ### OTA
+            Deployed devices running v4.0+ will auto-update within 24h.
           files: build/cross.bin
           draft: false
           prerelease: false
